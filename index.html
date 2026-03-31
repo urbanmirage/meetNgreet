@@ -671,7 +671,18 @@
 
         // --- DYNAMIC UI FUNCTIONS ---
         function addRemoteVideoUI(peerId, stream) {
-            if(document.getElementById("vid-wrap-" + peerId)) return; 
+            const existingWrapper = document.getElementById("vid-wrap-" + peerId);
+
+            // FIX: PeerJS often fires the 'stream' event twice (audio track, then video track).
+            // Instead of returning, we update the existing video element with the full stream.
+            if (existingWrapper) {
+                const existingVideo = document.getElementById("video-" + peerId);
+                if (existingVideo && existingVideo.srcObject !== stream) {
+                    existingVideo.srcObject = stream;
+                    existingVideo.play().catch(e => console.log("Play error", e));
+                }
+                return;
+            }
 
             const placeholder = document.getElementById('waiting-placeholder');
             if(placeholder) placeholder.style.display = 'none';
@@ -690,7 +701,12 @@
             video.id = "video-" + peerId;
             video.srcObject = stream;
             video.autoplay = true;
-            video.setAttribute('playsinline', 'true'); // Added strict playsinline attribute for iOS
+            video.setAttribute('playsinline', 'true'); // Required for iOS
+
+            // FIX: Explicitly call play() to bypass strict browser autoplay policies
+            video.onloadedmetadata = () => {
+                video.play().catch(e => console.error("Autoplay prevented:", e));
+            };
 
             const label = document.createElement('div');
             label.className = 'video-label';
