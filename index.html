@@ -442,7 +442,6 @@
     </div>
 
     <script>
-        // --- PASTE YOUR FIREBASE CONFIG HERE ---
         const firebaseConfig = {
             apiKey: "AIzaSyAS92CEgtkWgX4c6-e7m-OOBRsedkhjo4o",
             authDomain: "dbmeet-f934d.firebaseapp.com",
@@ -453,7 +452,6 @@
             appId: "1:690595213075:web:3d60b6dadb4241089934e6",
             measurementId: "G-1QHWJQJB57"
         };
-        // ---------------------------------------
 
         if (!firebase.apps.length) {
             firebase.initializeApp(firebaseConfig);
@@ -646,8 +644,9 @@
         }
 
         function initFirebaseSync() {
-            const code = currentUser.secretCode.replace(/[^a-zA-Z0-9]/g, "");
-            sessionRef = db.ref('sessions/' + code);
+            // FIXED: Everyone connects to the exact same global session room regardless of their login code.
+            sessionRef = db.ref('sessions/kadiwa_global_event');
+            
             usersRef = sessionRef.child('users');
             roomsRef = sessionRef.child('rooms');
             
@@ -706,22 +705,18 @@
         }
 
         function handleUsersSync(allUsers) {
-            // Update UI Caches
             globalRoomUsers = {};
             let newRoomUsers = {}; 
 
-            // Clear old UI Lists to regenerate cleanly
             document.getElementById('partListWrapper').innerHTML = '';
             document.getElementById('modListWrapper').innerHTML = '';
 
             Object.keys(allUsers).forEach(uid => {
                 let u = allUsers[uid];
                 
-                // Add to room groups
                 if (!globalRoomUsers[u.roomId]) globalRoomUsers[u.roomId] = {};
                 globalRoomUsers[u.roomId][uid] = u;
 
-                // Build Left Panel UI
                 if(u.roomId === currentRoom) {
                     newRoomUsers[uid] = u;
                     addParticipantUI(u.nickname, u.role, u.gender, uid, u.avatar);
@@ -729,16 +724,12 @@
                 }
             });
 
-            // Refresh Bottom Room Cards
             Object.keys(activeRoomsList).forEach(rId => updateRoomCardUI(rId));
 
-            // WebRTC Logic: Only connect video if in same room
-            // 1. Remove people who left our room
             Object.keys(roomUsers).forEach(uid => {
                 if (!newRoomUsers[uid] && uid !== myPeerId) cleanUpUser(uid);
             });
 
-            // 2. Call people newly added to our room
             Object.keys(newRoomUsers).forEach(uid => {
                 if (uid !== myPeerId) {
                     if (localStream && !activeCalls[uid] && myPeerId > uid) {
@@ -751,21 +742,18 @@
         }
 
         function handleRoomsSync(allRooms) {
-            // Add or Update
             Object.keys(allRooms).forEach(rId => {
                 if (!activeRoomsList[rId]) addRoomCard(rId, allRooms[rId].name, allRooms[rId].num);
                 else if (activeRoomsList[rId].name !== allRooms[rId].name) updateRoomName(rId, allRooms[rId].name);
                 activeRoomsList[rId] = allRooms[rId];
             });
 
-            // Remove deleted
             Object.keys(activeRoomsList).forEach(rId => {
                 if (!allRooms[rId] && rId !== 'main') {
                     removeRoomUI(rId);
                 }
             });
             
-            // Keep counter synced
             let max = 1; Object.values(activeRoomsList).forEach(r => { if(r.num > max) max = r.num; });
             roomCounter = max;
         }
@@ -967,7 +955,7 @@
             if (currentUser.role !== 'moderator') return;
             let options = `Move ${nickname} to which room?\n\n`;
             let roomIds = Object.keys(activeRoomsList).sort((a,b) => activeRoomsList[a].num - activeRoomsList[b].num);
-            roomIds.unshift('main'); // Allow moving back to main lobby
+            roomIds.unshift('main');
             
             roomIds.forEach(id => { options += id==='main' ? `[0] - Main Lobby\n` : `[${activeRoomsList[id].num}] - ${activeRoomsList[id].name}\n`; });
             let choice = prompt(options + "\nEnter the room number (0 for Main Lobby):"); if (!choice) return;
@@ -1026,7 +1014,6 @@
             Object.keys(activeCalls).forEach(id => cleanUpUser(id));
             currentRoom = roomId; 
             
-            // Sync new room in Firebase presence
             myUserRef.update({ roomId: currentRoom });
             
             listenToRoomChat(currentRoom);
@@ -1060,7 +1047,18 @@
             const placeholder = document.getElementById('waiting-placeholder'); if(placeholder) placeholder.style.display = 'none';
             const videoWrapper = document.createElement('div'); videoWrapper.className = 'other-video'; videoWrapper.id = "vid-wrap-" + peerId;
             if(roomUsers[peerId] && roomUsers[peerId].role === 'moderator') videoWrapper.style.border = '2px solid #e74c3c';
-            const video = document.createElement('video'); video.id = "video-" + peerId; video.srcObject = stream; video.autoplay = true; video.setAttribute('playsinline', 'true'); 
+            
+            const video = document.createElement('video'); 
+            video.id = "video-" + peerId; 
+            video.srcObject = stream; 
+            video.autoplay = true; 
+            video.setAttribute('playsinline', 'true'); 
+            
+            // FIXED: Explicitly tell mobile browsers to play once metadata loads
+            video.onloadedmetadata = () => { 
+                video.play().catch(e => console.warn("Autoplay block (tap screen to play)", e)); 
+            };
+
             const label = document.createElement('div'); label.className = 'video-label'; label.id = 'label-' + peerId;
             label.innerHTML = (roomUsers[peerId] ? roomUsers[peerId].nickname : "Participant") + (roomUsers[peerId] && roomUsers[peerId].role === 'moderator' ? ' <i class="fas fa-star" style="color:#f1c40f;"></i>' : '');
             videoWrapper.appendChild(video); videoWrapper.appendChild(label); document.getElementById('othersFeed').appendChild(videoWrapper);
@@ -1151,7 +1149,7 @@
         }
 
         function listenToRoomChat(roomId) {
-            if (currentRoomChatRef) currentRoomChatRef.off('child_added'); // stop old listener
+            if (currentRoomChatRef) currentRoomChatRef.off('child_added'); 
             currentRoomChatRef = sessionRef.child('chat/room_' + roomId);
             document.getElementById('chatMessagesPartner').innerHTML = '<div style="text-align: center; color: #888; font-size: 12px; margin-top: 10px; padding-bottom: 10px; border-bottom: 1px solid #333;">Partner Chat (Visible only to your current room)</div>';
             currentRoomChatRef.on('child_added', snap => {
