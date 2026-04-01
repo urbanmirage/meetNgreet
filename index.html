@@ -9,7 +9,9 @@
     <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;600&family=Righteous&display=swap" rel="stylesheet">
     
     <script src="https://unpkg.com/peerjs@1.5.1/dist/peerjs.min.js"></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/paho-mqtt/1.0.1/mqttws31.min.js"></script>
+    
+    <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-app.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-database.js"></script>
 
     <style>
         :root {
@@ -170,7 +172,6 @@
         .btn-swap-large { width: 100%; background: #8e44ad; color: white; border: none; padding: 12px; border-radius: 6px; cursor: pointer; font-weight: bold; font-size: 14px; display: flex; justify-content: center; align-items: center; gap: 8px; transition: 0.2s;}
         .btn-swap-large:hover { background: #732d91; }
 
-
         .panel { background: var(--hall-panel); border-radius: 12px; border: 1px solid var(--border); display: flex; flex-direction: column; overflow: hidden; box-shadow: 0 4px 15px rgba(0,0,0,0.5); }
         .panel-header { padding: 15px; background: var(--darker); border-bottom: 1px solid var(--border); font-weight: bold; display: flex; justify-content: space-between; align-items: center; }
 
@@ -179,6 +180,11 @@
         .participant-item { display: flex; align-items: center; padding: 10px; background: rgba(255,255,255,0.05); margin-bottom: 10px; border-radius: 8px; transition: transform 0.2s; }
         .avatar { width: 40px; height: 40px; border-radius: 50%; background: var(--primary); display: flex; justify-content: center; align-items: center; font-weight: bold; overflow: hidden; }
         
+        /* Participant Tabs specific to left panel */
+        .members-tabs { display: flex; background: var(--darker); border-bottom: 1px solid var(--border); }
+        .member-tab { flex: 1; padding: 10px; text-align: center; cursor: pointer; font-weight: bold; color: #888; border-bottom: 2px solid transparent; transition: 0.3s; font-size: 13px; }
+        .member-tab.active { color: var(--primary); border-bottom: 2px solid var(--primary); background: rgba(255,255,255,0.05); }
+
         .center-panel { grid-column: 2; grid-row: 1; background: #000; position: relative; display: flex; flex-direction: column; border-radius: 12px; overflow: hidden; }
         .video-grid { flex: 1; display: flex; flex-direction: column; padding: 10px; gap: 10px; overflow-y: auto; }
         .main-feed { width: 100%; height: 50%; background: #222; border-radius: 8px; position: relative; overflow: hidden; min-height: 250px; transition: border 0.3s; }
@@ -227,9 +233,12 @@
         .room-card { background: rgba(255,255,255,0.05); border: 1px solid #444; padding: 15px; border-radius: 8px; min-width: 240px; display: flex; flex-direction: column; justify-content: space-between; position: relative; }
         .room-card-header { display: flex; align-items: center; margin-bottom: 12px; gap: 10px; }
         .room-number-dot { background: #e74c3c; color: white; border-radius: 50%; width: 22px; height: 22px; display: flex; justify-content: center; align-items: center; font-size: 12px; font-weight: bold; flex-shrink: 0; }
-        .room-title { color: var(--primary); font-size: 16px; font-weight: 600; flex: 1; display: flex; align-items: center; gap: 8px; }
+        .room-title { color: var(--primary); font-size: 16px; font-weight: 600; flex: 1; display: flex; align-items: center; gap: 8px; justify-content: space-between;}
+        .room-title-actions { display: flex; gap: 8px; }
         .btn-edit-title { color: #888; cursor: pointer; font-size: 12px; transition: 0.2s; }
         .btn-edit-title:hover { color: white; }
+        .btn-delete-room { color: #e74c3c; cursor: pointer; font-size: 12px; transition: 0.2s; }
+        .btn-delete-room:hover { color: #c0392b; transform: scale(1.1); }
         .room-participants { flex: 1; display: flex; flex-direction: column; gap: 6px; margin-bottom: 12px; min-height: 40px; }
         .room-part-user { display: flex; align-items: center; gap: 10px; background: rgba(0,0,0,0.3); padding: 6px 10px; border-radius: 6px; }
         .room-avatar-img { width: 26px; height: 26px; border-radius: 50%; object-fit: cover; border: 1px solid rgba(255,255,255,0.2); }
@@ -355,7 +364,14 @@
                 <span><i class="fas fa-users"></i> Room Members</span>
                 <span id="participantCount" style="background: var(--primary); padding: 2px 8px; border-radius: 10px; font-size: 12px;">0</span>
             </div>
-            <div class="participant-list" id="participantList"></div>
+            <div class="members-tabs">
+                <div class="member-tab active" id="tab-members-part" onclick="switchMemberTab('part')">Participants</div>
+                <div class="member-tab" id="tab-members-mod" onclick="switchMemberTab('mod')">Moderators</div>
+            </div>
+            <div class="participant-list" id="participantList">
+                <div id="partListWrapper" style="display: flex; flex-direction: column;"></div>
+                <div id="modListWrapper" style="display: none; flex-direction: column;"></div>
+            </div>
         </div>
 
         <div class="panel center-panel">
@@ -426,6 +442,25 @@
     </div>
 
     <script>
+        // --- PASTE YOUR FIREBASE CONFIG HERE ---
+        const firebaseConfig = {
+            apiKey: "AIzaSyAS92CEgtkWgX4c6-e7m-OOBRsedkhjo4o",
+            authDomain: "dbmeet-f934d.firebaseapp.com",
+            databaseURL: "https://dbmeet-f934d-default-rtdb.asia-southeast1.firebasedatabase.app",
+            projectId: "dbmeet-f934d",
+            storageBucket: "dbmeet-f934d.firebasestorage.app",
+            messagingSenderId: "690595213075",
+            appId: "1:690595213075:web:3d60b6dadb4241089934e6",
+            measurementId: "G-1QHWJQJB57"
+        };
+        // ---------------------------------------
+
+        if (!firebase.apps.length) {
+            firebase.initializeApp(firebaseConfig);
+        }
+        const db = firebase.database();
+        let sessionRef, usersRef, roomsRef, myUserRef, currentRoomChatRef;
+
         function createHearts() {
             const container = document.getElementById('login-container');
             const numHearts = 15;
@@ -445,7 +480,7 @@
         let localStream;
         const SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbwOHyjvNBhA-3YRKguJmRWFu9JIECtmpUE-wC7lEv1tO7ryJ0VfDX4NrmHJsxmwcnrtlQ/exec';
 
-        let peer, myPeerId, mqttClient, activeCalls = {}, roomUsers = {}, signalingTopic = ""; 
+        let peer, myPeerId, activeCalls = {}, roomUsers = {}; 
         let currentRoom = 'main';
         let currentChatTab = 'global';
         let isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
@@ -498,7 +533,7 @@
                         gender: data.gender || generatedGender, secretCode: secretCode,
                         avatar: data.avatar || data.image || '' 
                     };
-                    signalingTopic = "kadiwa_hall_room_" + secretCode.replace(/[^a-zA-Z0-9]/g, "");
+
                     enterHall();
                 } else { alert("Match not found. Please check your credentials."); }
             } catch (error) { alert("Connection error. Check internet or Script Deployment."); } 
@@ -517,6 +552,7 @@
             }
 
             initRooms();
+
             const modTag = currentUser.role === 'moderator' ? ' <i class="fas fa-star" style="color:#f1c40f;"></i>' : '';
             document.getElementById('myVideoLabel').innerHTML = `${currentUser.nickname} (Me) ${modTag}`;
             
@@ -587,17 +623,20 @@
             peer = new Peer(undefined, {
                 config: { 'iceServers': [ { urls: 'stun:stun.l.google.com:19302' }, { urls: 'stun:global.stun.twilio.com:3478' } ] }
             }); 
+            
             peer.on('open', (id) => {
                 myPeerId = id;
                 removeParticipantUI('me'); 
                 addParticipantUI(currentUser.nickname, currentUser.role, currentUser.gender, myPeerId, currentUser.avatar);
-                initMQTT(); 
+                initFirebaseSync(); 
             });
+
             peer.on('call', (call) => {
                 call.answer(localStream); 
                 activeCalls[call.peer] = call;
                 call.on('stream', (remoteStream) => { addRemoteVideoUI(call.peer, remoteStream); });
                 call.on('close', () => removeRemoteVideoUI(call.peer));
+                
                 if (call.peerConnection) {
                     call.peerConnection.addEventListener('iceconnectionstatechange', () => {
                         if (['disconnected', 'failed', 'closed'].includes(call.peerConnection.iceConnectionState)) cleanUpUser(call.peer);
@@ -606,114 +645,129 @@
             });
         }
 
-        function initMQTT() {
-            const clientId = "kadiwa_" + Math.random().toString(16).substr(2, 8);
-            mqttClient = new Paho.MQTT.Client("broker.hivemq.com", 8884, "/mqtt", clientId);
-            mqttClient.onMessageArrived = (msg) => handleNetworkMessage(JSON.parse(msg.payloadString));
-            mqttClient.connect({ useSSL: true, onSuccess: () => {
-                mqttClient.subscribe(signalingTopic);
-                publishMsg({ type: "JOIN", peerId: myPeerId, nickname: currentUser.nickname, role: currentUser.role, gender: currentUser.gender, avatar: currentUser.avatar, roomId: currentRoom });
+        function initFirebaseSync() {
+            const code = currentUser.secretCode.replace(/[^a-zA-Z0-9]/g, "");
+            sessionRef = db.ref('sessions/' + code);
+            usersRef = sessionRef.child('users');
+            roomsRef = sessionRef.child('rooms');
+            
+            myUserRef = usersRef.child(myPeerId);
+            
+            // Auto remove when closing tab
+            myUserRef.onDisconnect().remove();
+
+            // Broadcast presence
+            myUserRef.set({
+                peerId: myPeerId,
+                nickname: currentUser.nickname,
+                role: currentUser.role,
+                gender: currentUser.gender,
+                avatar: currentUser.avatar,
+                roomId: currentRoom
+            });
+
+            // LISTENERS 
+            usersRef.on('value', snap => handleUsersSync(snap.val() || {}));
+            roomsRef.on('value', snap => handleRoomsSync(snap.val() || {}));
+            
+            // Listen to Swaps (Moderator action)
+            sessionRef.child('swaps/' + myPeerId).on('value', snap => {
+                if(snap.val() && snap.val().roomId) {
+                    let targetRoom = snap.val().roomId;
+                    if (activeRoomsList[targetRoom] || targetRoom === 'main') { 
+                        alert("You have been moved by a moderator."); 
+                        joinRoom(targetRoom); 
+                    }
+                    sessionRef.child('swaps/' + myPeerId).remove();
+                }
+            });
+
+            // Timers & Topics
+            sessionRef.child('state/timer').on('value', snap => {
+                let data = snap.val();
+                if(!data) clearTimerUI();
+                else if (data.endTime && data.endTime > Date.now()) applyTimer(data.endTime);
+                else if (data.pausedMs && data.pausedMs > 0) pauseTimer(data.pausedMs);
+                else clearTimerUI();
+            });
+
+            sessionRef.child('state/topics').on('value', snap => {
+                let data = snap.val() || [];
+                globalTopics = data;
+                updateTopicsListUI(globalTopics);
+            });
+
+            // Global Chat
+            sessionRef.child('chat/global').on('child_added', snap => {
+                let msg = snap.val();
+                displayChatMessage(msg.sender, msg.text, msg.role, 'global');
+            });
+            listenToRoomChat(currentRoom);
+        }
+
+        function handleUsersSync(allUsers) {
+            // Update UI Caches
+            globalRoomUsers = {};
+            let newRoomUsers = {}; 
+
+            // Clear old UI Lists to regenerate cleanly
+            document.getElementById('partListWrapper').innerHTML = '';
+            document.getElementById('modListWrapper').innerHTML = '';
+
+            Object.keys(allUsers).forEach(uid => {
+                let u = allUsers[uid];
                 
-                // Critical feature to synchronize with already connected users across devices
-                publishMsg({ type: "REQUEST_SYNC", peerId: myPeerId });
-            }});
-        }
+                // Add to room groups
+                if (!globalRoomUsers[u.roomId]) globalRoomUsers[u.roomId] = {};
+                globalRoomUsers[u.roomId][uid] = u;
 
-        function publishMsg(data) {
-            if(!mqttClient || !mqttClient.isConnected()) return;
-            const msg = new Paho.MQTT.Message(JSON.stringify(data));
-            msg.destinationName = signalingTopic;
-            mqttClient.send(msg);
-        }
+                // Build Left Panel UI
+                if(u.roomId === currentRoom) {
+                    newRoomUsers[uid] = u;
+                    addParticipantUI(u.nickname, u.role, u.gender, uid, u.avatar);
+                    updateVideoLabels(uid);
+                }
+            });
 
-        function handleNetworkMessage(data) {
-            if (data.peerId === myPeerId && data.type !== "FORCE_SWAP") return;
+            // Refresh Bottom Room Cards
+            Object.keys(activeRoomsList).forEach(rId => updateRoomCardUI(rId));
 
-            if (data.type === "CHAT") return displayChatMessage(data.nickname, data.text, data.role, 'global');
-            if (data.type === "NEW_ROOM") return addRoomCard(data.roomId, data.roomName, data.roomNum);
-            if (data.type === "RENAME_ROOM") return updateRoomName(data.roomId, data.roomName);
-            if (data.type === "START_TIMER") return applyTimer(data.endTime);
-            if (data.type === "STOP_TIMER") return pauseTimer(data.pausedRemainingMs);
-            if (data.type === "RESET_TIMER") return clearTimerUI();
-            if (data.type === "SYNC_TOPICS") return updateTopicsList(data.topics);
+            // WebRTC Logic: Only connect video if in same room
+            // 1. Remove people who left our room
+            Object.keys(roomUsers).forEach(uid => {
+                if (!newRoomUsers[uid] && uid !== myPeerId) cleanUpUser(uid);
+            });
 
-            // GLOBAL SYNC REQUESTED BY NEW COMER
-            if (data.type === "REQUEST_SYNC") {
-                if (data.peerId !== myPeerId) {
-                    // Tell the new user about my existence 
-                    publishMsg({ type: "PRESENCE", targetId: data.peerId, peerId: myPeerId, nickname: currentUser.nickname, role: currentUser.role, gender: currentUser.gender, avatar: currentUser.avatar, roomId: currentRoom });
-                    
-                    // Mod handles sending overarching configurations (Rooms, Timers, Topics)
-                    if (currentUser.role === 'moderator') {
-                        publishMsg({ 
-                            type: "ROOMS_SYNC", targetId: data.peerId, 
-                            rooms: activeRoomsList, topics: globalTopics, 
-                            activeTimer: (globalEndTime > Date.now() ? globalEndTime : 0), 
-                            pausedMs: pausedRemainingMs 
-                        });
+            // 2. Call people newly added to our room
+            Object.keys(newRoomUsers).forEach(uid => {
+                if (uid !== myPeerId) {
+                    if (localStream && !activeCalls[uid] && myPeerId > uid) {
+                        establishCall(uid);
                     }
                 }
-                return;
-            }
+            });
 
-            if (data.type === "ROOMS_SYNC") {
-                if (data.targetId && data.targetId !== myPeerId) return;
-                Object.keys(data.rooms).forEach(rId => {
-                    if(!activeRoomsList[rId]) addRoomCard(rId, data.rooms[rId].name, data.rooms[rId].num);
-                    else if(activeRoomsList[rId].name !== data.rooms[rId].name) updateRoomName(rId, data.rooms[rId].name);
-                });
-                if (data.topics) { globalTopics = data.topics; updateTopicsList(globalTopics); }
-                
-                if (data.activeTimer && data.activeTimer > Date.now()) applyTimer(data.activeTimer); 
-                else if (data.pausedMs && data.pausedMs > 0) pauseTimer(data.pausedMs); 
-                else clearTimerUI();
-                
-                let maxNum = 1; Object.values(activeRoomsList).forEach(r => { if(r.num > maxNum) maxNum = r.num; }); roomCounter = maxNum;
-                return;
-            }
+            roomUsers = newRoomUsers;
+        }
+
+        function handleRoomsSync(allRooms) {
+            // Add or Update
+            Object.keys(allRooms).forEach(rId => {
+                if (!activeRoomsList[rId]) addRoomCard(rId, allRooms[rId].name, allRooms[rId].num);
+                else if (activeRoomsList[rId].name !== allRooms[rId].name) updateRoomName(rId, allRooms[rId].name);
+                activeRoomsList[rId] = allRooms[rId];
+            });
+
+            // Remove deleted
+            Object.keys(activeRoomsList).forEach(rId => {
+                if (!allRooms[rId] && rId !== 'main') {
+                    removeRoomUI(rId);
+                }
+            });
             
-            if (data.type === "FORCE_SWAP") {
-                if (data.moves[myPeerId]) {
-                    let targetRoom = data.moves[myPeerId];
-                    if (activeRoomsList[targetRoom]) { alert("You have been moved by a moderator."); joinRoom(targetRoom); }
-                }
-                return;
-            }
-
-            if (data.type === "JOIN" || data.type === "PRESENCE" || data.type === "LEAVE") {
-                if(data.type === "LEAVE") {
-                    Object.keys(globalRoomUsers).forEach(rId => {
-                        if (globalRoomUsers[rId] && globalRoomUsers[rId][data.peerId]) { delete globalRoomUsers[rId][data.peerId]; updateRoomCardUI(rId); }
-                    });
-                }
-                if(data.type !== "LEAVE") {
-                    if (!globalRoomUsers[data.roomId]) globalRoomUsers[data.roomId] = {};
-                    globalRoomUsers[data.roomId][data.peerId] = data;
-                }
-                if(data.roomId) updateRoomCardUI(data.roomId);
-            }
-
-            // Room specific handling (only process if they are in our room)
-            if (data.roomId !== currentRoom) return;
-
-            if (data.type === "ROOM_CHAT") displayChatMessage(data.nickname, data.text, data.role, 'partner');
-            else if (data.type === "JOIN" || (data.type === "PRESENCE" && data.targetId === myPeerId && !roomUsers[data.peerId])) {
-                roomUsers[data.peerId] = data;
-                addParticipantUI(data.nickname, data.role, data.gender, data.peerId, data.avatar);
-                updateVideoLabels(data.peerId); 
-                
-                // Robust connection setup: Tie-breaker mechanism to prevent duplicate WebRTC calls
-                if (localStream && !activeCalls[data.peerId] && myPeerId > data.peerId) {
-                    establishCall(data.peerId);
-                } else if (data.type === "JOIN" && localStream && !activeCalls[data.peerId]) {
-                    establishCall(data.peerId);
-                }
-                
-                if(data.type === "JOIN") {
-                    publishMsg({ type: "PRESENCE", targetId: data.peerId, peerId: myPeerId, nickname: currentUser.nickname, role: currentUser.role, gender: currentUser.gender, avatar: currentUser.avatar, roomId: currentRoom });
-                }
-            } 
-            else if (data.type === "LEAVE") cleanUpUser(data.peerId);
+            // Keep counter synced
+            let max = 1; Object.values(activeRoomsList).forEach(r => { if(r.num > max) max = r.num; });
+            roomCounter = max;
         }
 
         function establishCall(targetPeerId) {
@@ -727,12 +781,8 @@
         }
 
         function cleanUpUser(peerId) {
-            removeRemoteVideoUI(peerId); removeParticipantUI(peerId);
-            if (activeCalls[peerId]) activeCalls[peerId].close();
-            delete roomUsers[peerId]; delete activeCalls[peerId];
-            Object.keys(globalRoomUsers).forEach(rId => {
-                if (globalRoomUsers[rId] && globalRoomUsers[rId][peerId]) { delete globalRoomUsers[rId][peerId]; updateRoomCardUI(rId); }
-            });
+            removeRemoteVideoUI(peerId); 
+            if (activeCalls[peerId]) { activeCalls[peerId].close(); delete activeCalls[peerId]; }
         }
 
         /* --- NOTES & TOPICS MODULES --- */
@@ -753,30 +803,30 @@
             const m = document.getElementById('topicsModal');
             m.style.display = m.style.display === 'flex' ? 'none' : 'flex';
         }
+
         function addTopic() {
             const v = document.getElementById('newTopicInput').value.trim();
             if(!v) return;
             globalTopics.push(v); document.getElementById('newTopicInput').value = '';
-            publishMsg({ type: "SYNC_TOPICS", topics: globalTopics }); updateTopicsList(globalTopics);
+            sessionRef.child('state/topics').set(globalTopics);
         }
         function deleteTopic(index) {
             if(confirm("Delete this topic?")) {
                 globalTopics.splice(index, 1);
-                publishMsg({ type: "SYNC_TOPICS", topics: globalTopics }); updateTopicsList(globalTopics);
+                sessionRef.child('state/topics').set(globalTopics);
             }
         }
         function editTopic(index) {
             const newVal = prompt("Edit topic:", globalTopics[index]);
             if(newVal !== null && newVal.trim() !== "") {
                 globalTopics[index] = newVal.trim();
-                publishMsg({ type: "SYNC_TOPICS", topics: globalTopics }); updateTopicsList(globalTopics);
+                sessionRef.child('state/topics').set(globalTopics);
             }
         }
         function viewTopic(index) {
             alert("Topic Details:\n\n" + globalTopics[index]);
         }
-        function updateTopicsList(topics) {
-            globalTopics = topics;
+        function updateTopicsListUI(topics) {
             const container = document.getElementById('topicsList'); container.innerHTML = '';
             topics.forEach((t, i) => {
                 let html = `<div class="topic-item"><span>${t}</span><div class="topic-actions">`;
@@ -805,7 +855,7 @@
             
             pausedRemainingMs = 0;
             const endTime = Date.now() + ms;
-            publishMsg({ type: "START_TIMER", endTime: endTime }); applyTimer(endTime);
+            sessionRef.child('state/timer').set({ endTime: endTime, pausedMs: 0 });
         }
 
         function stopGlobalTimer() { 
@@ -813,18 +863,15 @@
             if (globalEndTime > 0) {
                 pausedRemainingMs = globalEndTime - Date.now();
                 if (pausedRemainingMs < 0) pausedRemainingMs = 0;
-                publishMsg({ type: "STOP_TIMER", pausedRemainingMs: pausedRemainingMs });
-                pauseTimer(pausedRemainingMs);
+                sessionRef.child('state/timer').set({ endTime: 0, pausedMs: pausedRemainingMs });
             }
         }
 
         function resetGlobalTimer() {
             if (currentUser.role !== 'moderator') return;
-            pausedRemainingMs = 0;
             document.getElementById('customMin').value = '';
             document.getElementById('customSec').value = '';
-            publishMsg({ type: "RESET_TIMER" });
-            clearTimerUI();
+            sessionRef.child('state/timer').remove();
         }
 
         function applyTimer(endTime) {
@@ -842,7 +889,6 @@
                 } else {
                     let textTime = `${Math.floor(remaining / 60000).toString().padStart(2, '0')}:${Math.floor((remaining / 1000) % 60).toString().padStart(2, '0')}`;
                     timerText.innerHTML = textTime;
-                    // Giant zoom warning for < 20s
                     if(remaining <= 20000) { 
                         timerDisplay.style.transform = 'translateX(-50%) scale(1.4)';
                         timerDisplay.style.transformOrigin = 'top center';
@@ -859,7 +905,7 @@
             const timerDisplay = document.getElementById('topCenterTimer');
             const timerText = document.getElementById('topCenterTimerText');
             timerDisplay.style.display = 'flex';
-            timerDisplay.style.background = '#f39c12'; // Yellow indication for pause
+            timerDisplay.style.background = '#f39c12';
             timerDisplay.style.transform = 'translateX(-50%) scale(1)';
             timerText.innerHTML = `${Math.floor(remainingMs / 60000).toString().padStart(2, '0')}:${Math.floor((remainingMs / 1000) % 60).toString().padStart(2, '0')}`;
         }
@@ -875,21 +921,41 @@
             if (currentRoom !== 'main') { 
                 alert("Session Timer Ended! Redirecting to Main Lobby."); 
                 joinRoom('main'); 
-            } else { displayChatMessage("System", "The Breakout Session timer has ended.", "moderator", "global"); } 
+            }
         }
 
         /* --- ROOM MANAGEMENT --- */
         function createRoom() {
             if (currentUser.role !== 'moderator') return;
             const roomName = prompt("Enter a title for the new Breakout Room:"); if(!roomName) return;
-            const rId = 'room_' + Math.random().toString(36).substr(2, 6); roomCounter++;
-            publishMsg({ type: "NEW_ROOM", roomId: rId, roomName: roomName, roomNum: roomCounter }); addRoomCard(rId, roomName, roomCounter);
+            const rId = 'room_' + Math.random().toString(36).substr(2, 6); 
+            roomCounter++;
+            roomsRef.child(rId).set({ name: roomName, num: roomCounter });
         }
 
         function editRoomTitle(roomId) {
             if (currentUser.role !== 'moderator') return;
             const newName = prompt("Enter new title:", activeRoomsList[roomId].name);
-            if (newName && newName !== activeRoomsList[roomId].name) { publishMsg({ type: "RENAME_ROOM", roomId: roomId, roomName: newName }); updateRoomName(roomId, newName); }
+            if (newName && newName !== activeRoomsList[roomId].name) { 
+                roomsRef.child(roomId).update({ name: newName });
+            }
+        }
+
+        function deleteRoom(roomId) {
+            if (currentUser.role !== 'moderator') return;
+            if(confirm("Are you sure you want to delete this room? Everyone inside will be sent to the Main Lobby.")) {
+                roomsRef.child(roomId).remove();
+            }
+        }
+
+        function removeRoomUI(roomId) {
+            if (activeRoomsList[roomId]) delete activeRoomsList[roomId];
+            const card = document.getElementById('room-' + roomId);
+            if (card) card.remove();
+            if (currentRoom === roomId) {
+                alert("The room you were in has been deleted.");
+                joinRoom('main');
+            }
         }
 
         function updateRoomName(roomId, newName) {
@@ -901,11 +967,17 @@
             if (currentUser.role !== 'moderator') return;
             let options = `Move ${nickname} to which room?\n\n`;
             let roomIds = Object.keys(activeRoomsList).sort((a,b) => activeRoomsList[a].num - activeRoomsList[b].num);
-            roomIds.forEach(id => { options += `[${activeRoomsList[id].num}] - ${activeRoomsList[id].name}\n`; });
-            let choice = prompt(options + "\nEnter the room number:"); if (!choice) return;
-            let targetRoomId = roomIds.find(id => activeRoomsList[id].num.toString() === choice.trim());
-            if (targetRoomId) { publishMsg({ type: "FORCE_SWAP", moves: { [peerId]: targetRoomId } }); alert("Command sent."); }
-            else { alert("Invalid room number."); }
+            roomIds.unshift('main'); // Allow moving back to main lobby
+            
+            roomIds.forEach(id => { options += id==='main' ? `[0] - Main Lobby\n` : `[${activeRoomsList[id].num}] - ${activeRoomsList[id].name}\n`; });
+            let choice = prompt(options + "\nEnter the room number (0 for Main Lobby):"); if (!choice) return;
+            
+            let targetRoomId = (choice.trim() === '0') ? 'main' : roomIds.find(id => activeRoomsList[id] && activeRoomsList[id].num.toString() === choice.trim());
+            
+            if (targetRoomId) { 
+                sessionRef.child('swaps/' + peerId).set({ roomId: targetRoomId });
+                alert("Command sent."); 
+            } else { alert("Invalid room number."); }
         }
 
         function addRoomCard(roomId, roomName, roomNum) {
@@ -914,14 +986,23 @@
             if (!globalRoomUsers[roomId]) globalRoomUsers[roomId] = {};
             
             const card = document.createElement('div'); card.className = 'room-card'; card.id = 'room-' + roomId;
-            let editIcon = currentUser.role === 'moderator' ? `<i class="fas fa-pen btn-edit-title" onclick="editRoomTitle('${roomId}')"></i>` : '';
-            card.innerHTML = `<div class="room-card-header"><div class="room-number-dot">${roomNum}</div><div class="room-title"><span>${roomName}</span>${editIcon}</div></div><div class="room-participants" id="room-parts-${roomId}"></div><button class="join-room-btn" onclick="joinRoom('${roomId}')">Join Room</button>`;
+            
+            let modActions = '';
+            if (currentUser.role === 'moderator' && roomId !== 'main') {
+                modActions = `<div class="room-title-actions">
+                    <i class="fas fa-pen btn-edit-title" onclick="editRoomTitle('${roomId}')" title="Edit"></i>
+                    <i class="fas fa-trash btn-delete-room" onclick="deleteRoom('${roomId}')" title="Delete Room"></i>
+                </div>`;
+            }
+
+            card.innerHTML = `<div class="room-card-header"><div class="room-number-dot">${roomNum || 0}</div><div class="room-title"><span>${roomName}</span>${modActions}</div></div><div class="room-participants" id="room-parts-${roomId}"></div><button class="join-room-btn" onclick="joinRoom('${roomId}')">Join Room</button>`;
             document.getElementById('roomsContainer').appendChild(card); updateRoomCardUI(roomId); 
         }
 
         function updateRoomCardUI(roomId) {
             const partsContainer = document.getElementById('room-parts-' + roomId); if (!partsContainer) return;
             partsContainer.innerHTML = ''; let maleCount = 0, femaleCount = 0;
+            
             Object.values(globalRoomUsers[roomId] || {}).forEach(u => {
                 if (u.role === 'participant') { if (u.gender === 'male') maleCount++; if (u.gender === 'female') femaleCount++; }
                 const avatarHtml = u.avatar ? `<img src="${u.avatar}" class="room-avatar-img">` : `<div class="room-avatar-initial">${u.nickname.substring(0,2).toUpperCase()}</div>`;
@@ -941,22 +1022,36 @@
 
         function joinRoom(roomId) {
             if(roomId === currentRoom) return;
-            publishMsg({ type: "LEAVE", peerId: myPeerId, roomId: currentRoom });
-            // Destroy all active peer calls to enforce isolation
-            Object.keys(activeCalls).forEach(id => cleanUpUser(id));
             
-            currentRoom = roomId; Object.keys(activeRoomsList).forEach(rId => updateRoomCardUI(rId));
-            publishMsg({ type: "JOIN", peerId: myPeerId, nickname: currentUser.nickname, role: currentUser.role, gender: currentUser.gender, avatar: currentUser.avatar, roomId: currentRoom });
+            Object.keys(activeCalls).forEach(id => cleanUpUser(id));
+            currentRoom = roomId; 
+            
+            // Sync new room in Firebase presence
+            myUserRef.update({ roomId: currentRoom });
+            
+            listenToRoomChat(currentRoom);
             switchChatTab('partner');
         }
 
         function swapMales() {
             if (currentUser.role !== 'moderator') return;
-            let males = []; Object.keys(globalRoomUsers).forEach(rId => Object.values(globalRoomUsers[rId]).forEach(u => { if (u.role === 'participant' && u.gender === 'male') males.push({ peerId: u.peerId, roomId: rId }); }));
-            if (males.length === 0) return alert("No male participants to swap.");
-            let roomIds = Object.keys(activeRoomsList).sort((a, b) => activeRoomsList[a].num - activeRoomsList[b].num);
-            let moves = {}; males.forEach(m => { moves[m.peerId] = roomIds[(roomIds.indexOf(m.roomId) + 1) % roomIds.length]; });
-            publishMsg({ type: "FORCE_SWAP", moves: moves }); alert("Rotated males.");
+            let males = []; 
+            Object.keys(globalRoomUsers).forEach(rId => {
+                if(rId === 'main') return;
+                Object.values(globalRoomUsers[rId]).forEach(u => { 
+                    if (u.role === 'participant' && u.gender === 'male') males.push({ peerId: u.peerId, roomId: rId }); 
+                });
+            });
+            if (males.length === 0) return alert("No male participants inside breakout rooms to swap.");
+            
+            let roomIds = Object.keys(activeRoomsList).filter(r=>r!=='main').sort((a, b) => activeRoomsList[a].num - activeRoomsList[b].num);
+            if (roomIds.length <= 1) return alert("Need at least 2 breakout rooms to rotate.");
+            
+            males.forEach(m => { 
+                let target = roomIds[(roomIds.indexOf(m.roomId) + 1) % roomIds.length]; 
+                sessionRef.child('swaps/' + m.peerId).set({ roomId: target });
+            });
+            alert("Rotated males.");
         }
 
         /* --- VIDEO / UI RENDERING --- */
@@ -988,22 +1083,57 @@
             }
         }
 
+        function switchMemberTab(tab) {
+            document.getElementById('tab-members-part').classList.remove('active');
+            document.getElementById('tab-members-mod').classList.remove('active');
+            document.getElementById('partListWrapper').style.display = 'none';
+            document.getElementById('modListWrapper').style.display = 'none';
+            
+            if(tab === 'part') {
+                document.getElementById('tab-members-part').classList.add('active');
+                document.getElementById('partListWrapper').style.display = 'flex';
+            } else {
+                document.getElementById('tab-members-mod').classList.add('active');
+                document.getElementById('modListWrapper').style.display = 'flex';
+            }
+        }
+
+        function updateParticipantCount() {
+            document.getElementById('participantCount').innerText = document.querySelectorAll('.participant-item').length;
+        }
+
         function addParticipantUI(name, role, gender, idStr, avatarUrl) {
             if(document.getElementById("list-item-" + idStr)) return;
             const icon = role === 'moderator' ? '<i class="fas fa-lion"></i>' : '<i class="fas fa-cat"></i>';
             const genderColor = gender === 'male' ? '#3498db' : '#e74c3c';
-            const avatarDisplay = avatarUrl ? `<img src="${avatarUrl}" style="width:100%; height:100%; object-fit:cover;">` : `${name.substring(0,2).toUpperCase()}`;
-            document.getElementById('participantList').insertAdjacentHTML('beforeend', `<div class="participant-item" id="list-item-${idStr}"><div style="display: flex; flex-direction: column; align-items: center; margin-right: 15px;"><div class="avatar">${avatarDisplay}</div><div style="font-size: 10px; font-weight: bold; margin-top: 4px; color: ${genderColor};">${gender === 'male' ? 'Male <i class="fas fa-mars"></i>' : 'Female <i class="fas fa-venus"></i>'}</div></div><div>${name} <span style="color: ${role === 'moderator' ? '#e74c3c' : '#f39c12'}">${icon}</span></div></div>`);
-            document.getElementById('participantCount').innerText = document.querySelectorAll('.participant-item').length;
+            const avatarDisplay = avatarUrl ? `<img src="${avatarUrl}" style="width:100%; height:100%; object-fit:cover;">` : `<div style="width:100%; height:100%; display:flex; justify-content:center; align-items:center;">${name.substring(0,2).toUpperCase()}</div>`;
+            
+            const html = `<div class="participant-item" id="list-item-${idStr}">
+                <div style="display: flex; flex-direction: column; align-items: center; margin-right: 15px;">
+                    <div class="avatar">${avatarDisplay}</div>
+                    <div style="font-size: 10px; font-weight: bold; margin-top: 4px; color: ${genderColor};">${gender === 'male' ? 'Male <i class="fas fa-mars"></i>' : 'Female <i class="fas fa-venus"></i>'}</div>
+                </div>
+                <div>${name} <span style="color: ${role === 'moderator' ? '#e74c3c' : '#f39c12'}">${icon}</span> <span style="font-size: 11px; color:#888;">(${role === 'moderator' ? 'Moderator' : 'Participant'})</span></div>
+            </div>`;
+
+            if (role === 'moderator') {
+                document.getElementById('modListWrapper').insertAdjacentHTML('beforeend', html);
+            } else {
+                document.getElementById('partListWrapper').insertAdjacentHTML('beforeend', html);
+            }
+            updateParticipantCount();
         }
 
-        function removeParticipantUI(idStr) { const el = document.getElementById("list-item-" + idStr); if(el) el.remove(); document.getElementById('participantCount').innerText = document.querySelectorAll('.participant-item').length; }
+        function removeParticipantUI(idStr) { 
+            const el = document.getElementById("list-item-" + idStr); 
+            if(el) el.remove(); 
+            updateParticipantCount();
+        }
 
         let isMuted = false, isCamOff = false;
         function toggleMute() { isMuted = !isMuted; if (localStream) localStream.getAudioTracks()[0].enabled = !isMuted; document.getElementById('muteBtn').innerHTML = isMuted ? '<i class="fas fa-microphone-slash" style="background:#e74c3c;"></i>Unmute' : '<i class="fas fa-microphone"></i>Mute'; }
         function toggleCam() { isCamOff = !isCamOff; if (localStream) localStream.getVideoTracks()[0].enabled = !isCamOff; document.getElementById('camBtn').innerHTML = isCamOff ? '<i class="fas fa-video-slash" style="background:#e74c3c;"></i>Start Video' : '<i class="fas fa-video"></i>Stop Video'; }
-        function leaveHall() { publishMsg({ type: "LEAVE", peerId: myPeerId, roomId: currentRoom }); if(localStream) localStream.getTracks().forEach(t => t.stop()); window.location.reload(); }
-        window.addEventListener('beforeunload', () => { if (mqttClient && mqttClient.isConnected()) publishMsg({ type: "LEAVE", peerId: myPeerId, roomId: currentRoom }); });
+        function leaveHall() { if(localStream) localStream.getTracks().forEach(t => t.stop()); window.location.reload(); }
 
         function switchChatTab(tab) {
             currentChatTab = tab;
@@ -1014,9 +1144,20 @@
         function handleChatEnter(e) { if(e.key === 'Enter') sendChatMessage(); }
         function sendChatMessage() {
             const input = document.getElementById('chatInput'); const text = input.value.trim(); if (!text) return;
-            if (currentChatTab === 'global') { displayChatMessage(currentUser.nickname, text, currentUser.role, 'global'); publishMsg({ type: "CHAT", peerId: myPeerId, nickname: currentUser.nickname, role: currentUser.role, text: text }); }
-            else { displayChatMessage(currentUser.nickname, text, currentUser.role, 'partner'); publishMsg({ type: "ROOM_CHAT", peerId: myPeerId, roomId: currentRoom, nickname: currentUser.nickname, role: currentUser.role, text: text }); }
+            let msgObj = { sender: currentUser.nickname, role: currentUser.role, text: text, timestamp: firebase.database.ServerValue.TIMESTAMP };
+            if (currentChatTab === 'global') { sessionRef.child('chat/global').push(msgObj); }
+            else { sessionRef.child('chat/room_' + currentRoom).push(msgObj); }
             input.value = '';
+        }
+
+        function listenToRoomChat(roomId) {
+            if (currentRoomChatRef) currentRoomChatRef.off('child_added'); // stop old listener
+            currentRoomChatRef = sessionRef.child('chat/room_' + roomId);
+            document.getElementById('chatMessagesPartner').innerHTML = '<div style="text-align: center; color: #888; font-size: 12px; margin-top: 10px; padding-bottom: 10px; border-bottom: 1px solid #333;">Partner Chat (Visible only to your current room)</div>';
+            currentRoomChatRef.on('child_added', snap => {
+                let msg = snap.val();
+                displayChatMessage(msg.sender, msg.text, msg.role, 'partner');
+            });
         }
 
         function displayChatMessage(sender, text, role, tab) {
